@@ -2,7 +2,7 @@
 NodeJs neovim tools is inteded to be a collection of utility tools that fcilitates javascript/typescript NodeJs development.
 
 ## Required dependencies
-- [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter) is required with `json` parser is installed
+- [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter) is required with `json` parser installed
 
 ## Instalation
 Using [vim-plug](https://github.com/junegunn/vim-plug)
