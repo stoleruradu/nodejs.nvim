@@ -1,5 +1,7 @@
 local M = {};
 
+local store = {};
+
 local function get_scripts(pkg_json)
   local query = vim.treesitter.query.parse('json', [[
     (object
@@ -31,7 +33,7 @@ local function get_scripts(pkg_json)
 
       storage[parent:id()] = storage[parent:id()] or {};
       storage[parent:id()].key = vim.treesitter.get_node_text(child, pkg_json);
-      storage[parent:id()].lnum = lnum;
+      storage[parent:id()].lnum = lnum + 1;
     end
 
     if name == 'script.value' then
@@ -49,10 +51,94 @@ end
 
 local function sign_placeall(group, opts)
   vim.fn.sign_unplace(group, { buffer = opts.buffer });
-  for _, script in pairs(get_scripts(opts.buffer)) do
-    vim.schedule(function()
-      vim.fn.sign_place(0, group, 'NpmToolSignStart', opts.buffer, { lnum = script.lnum + 1 })
-    end);
+
+  local scripts = get_scripts(opts.buffer);
+  local path = vim.api.nvim_buf_get_name(opts.buffer);
+
+  for _, script in pairs(scripts) do
+    vim.fn.sign_place(0, group, 'NpmToolSignStart', opts.buffer, { lnum = script.lnum })
+  end
+
+  store[path] = scripts;
+end
+
+local function setup_buff()
+  local buf = vim.api.nvim_create_buf(false, false)
+
+  vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
+  vim.api.nvim_buf_set_option(buf, "swapfile", false)
+  vim.api.nvim_buf_set_option(buf, "buflisted", false)
+  vim.api.nvim_buf_set_option(buf, "filetype", "bash")
+
+  return buf;
+end
+
+local function run_cmd(script, cwd)
+  local out_buf = setup_buff();
+
+  vim.cmd("split");
+  vim.cmd(string.format("buffer %d", out_buf));
+
+  local cmd = 'yarn ' .. script;
+
+  local exited = false;
+
+  local id = vim.fn.jobstart(cmd, {
+    cwd = cwd,
+    stdout_buffered = false,
+    on_stdout = function(_, data)
+      if data then
+        vim.api.nvim_buf_set_lines(out_buf, -2, -1, false, data);
+        -- vim.api.nvim_win_set_cursor({ 0 }, { 1 });
+      end
+    end,
+    on_stderr = function(_, data)
+      if data then
+        vim.api.nvim_buf_set_lines(out_buf, -2, -1, false, data);
+      end
+    end,
+    on_exit = function()
+      exited = true;
+      vim.api.nvim_buf_set_lines(out_buf, -1, -1, false, { 'Process exited, press ^C to close this window' });
+    end
+  });
+
+  vim.keymap.set('', '<C-c>', function()
+    if exited then
+      vim.api.nvim_win_close(0, true);
+      return;
+    end
+
+    vim.fn.jobstop(id);
+  end, { silent = true, buffer = out_buf })
+end
+
+local dirname = function(str)
+  if str:match(".-/.-") then
+    local name = string.gsub(str, "(.*/)(.*)", "%1")
+    return name
+  else
+    return ''
+  end
+end
+
+local run_script = function()
+  local file = vim.api.nvim_buf_get_name(0);
+  local scripts = store[file];
+
+  if not scripts then
+    return;
+  end
+
+  local cwd = dirname(file);
+
+  local cords = vim.api.nvim_win_get_cursor(0);
+  local row = unpack(cords);
+
+  for _, script in pairs(scripts) do
+    if script.lnum == row then
+      run_cmd(script.key, cwd);
+    end
   end
 end
 
@@ -75,9 +161,19 @@ function M.setup()
     pattern = 'package.json',
     group = augroup('ScriptRunner'),
     callback = function(event)
-      sign_placeall(signs_group, { buffer = event.buf });
+      vim.keymap.set('n', '<leader>e', function()
+        run_script()
+      end, { silent = true, buffer = event.buf })
+
+      vim.schedule(function()
+        sign_placeall(signs_group, { buffer = event.buf });
+      end)
     end
   });
+
+  vim.api.nvim_create_user_command('NodeJsRunScript', function()
+    run_script();
+  end, {})
 end
 
 return M;
