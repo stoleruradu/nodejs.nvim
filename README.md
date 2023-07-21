@@ -29,5 +29,7 @@ return { 'stoleruradu/nodejstools.nvim', opts = {} }
 
 ### Scripts runner
 
+Being in a `package.json` file, put the cursor on a script under `scripts`.
+
 - use `<Leader>e` to run a npm script.
 - use `<C-c`> to stop the execution.
