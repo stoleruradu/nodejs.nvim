@@ -34,4 +34,5 @@ Being in a `package.json` file, put the cursor on a script under `scripts`.
 - use `<Leader>e` to run a npm script.
 - use `<C-c`> to stop the execution.
 
-![image](https://github.com/stoleruradu/nodejstools.nvim/assets/10254524/3c4d0e57-7eb3-457d-a080-bb0fc4839f18)
+![ezgif com-video-to-gif](https://github.com/stoleruradu/nodejstools.nvim/assets/10254524/6cf7a375-6048-4d46-ac66-f53e5a3d64d4)
+
