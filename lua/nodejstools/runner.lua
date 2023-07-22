@@ -62,6 +62,13 @@ local function sign_placeall(group, opts)
   store[path] = scripts;
 end
 
+local scroll_end = function(target_win)
+  local buf = vim.api.nvim_win_get_buf(target_win);
+  local target_line = vim.tbl_count(vim.api.nvim_buf_get_lines(buf, 0, -1, true))
+
+  vim.api.nvim_win_set_cursor(target_win, { target_line, 0 })
+end
+
 local function setup_buff()
   local buf = vim.api.nvim_create_buf(false, false)
 
@@ -75,9 +82,14 @@ end
 
 local function run_cmd(script, cwd)
   local out_buf = setup_buff();
+  local original_win = vim.api.nvim_get_current_win();
 
   vim.cmd("split");
-  vim.cmd(string.format("buffer %d", out_buf));
+
+  local out_win = vim.api.nvim_get_current_win();
+
+  vim.api.nvim_win_set_buf(out_win, out_buf);
+  vim.api.nvim_set_current_win(original_win)
 
   local cmd = 'yarn ' .. script;
 
@@ -89,17 +101,19 @@ local function run_cmd(script, cwd)
     on_stdout = function(_, data)
       if data then
         vim.api.nvim_buf_set_lines(out_buf, -2, -1, false, data);
-        -- vim.api.nvim_win_set_cursor({ 0 }, { 1 });
+        scroll_end(out_win);
       end
     end,
     on_stderr = function(_, data)
       if data then
         vim.api.nvim_buf_set_lines(out_buf, -2, -1, false, data);
+        scroll_end(out_win);
       end
     end,
     on_exit = function()
       exited = true;
       vim.api.nvim_buf_set_lines(out_buf, -1, -1, false, { 'Process exited, press ^C to close this window' });
+      scroll_end(out_win);
     end
   });
 
