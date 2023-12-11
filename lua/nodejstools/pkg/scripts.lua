@@ -2,6 +2,9 @@ local M = {};
 
 local signs_group = 'PackageJsonSigns';
 local entries = {};
+local config = {
+  output_layout = 'vsplit'
+}
 
 local dirname = function(str)
   if str:match(".-/.-") then
@@ -52,19 +55,43 @@ local get_scripts = function(bufnr)
         local api = vim.api
         local buf = api.nvim_create_buf(false, true);
 
-        vim.cmd "vsplit";
+        vim.cmd(config.output_layout);
 
         local win = vim.api.nvim_get_current_win();
 
         vim.api.nvim_win_set_buf(win, buf);
 
-        vim.fn.termopen({ 'yarn', self.key }, {
+        local running = true;
+        local job_id = vim.fn.termopen({ 'yarn', self.key }, {
           cwd = cwd,
           --on_stderr = send_output,
-          --on_exit = function()
-          --  scroll_end(win);
-          --end
+          on_exit = function()
+            running = false;
+          end
         });
+        --
+        -- allows quiting terminal by pressing q
+        vim.bo[buf].buflisted = false
+
+        vim.keymap.set('n', 'q', function()
+          if not running then
+            vim.cmd 'close';
+            return;
+          end
+
+          vim.ui.select({ 'yes', 'no' }, {
+            prompt = 'The execution has not finished yed, sure want to close it?',
+            format_item = function(item)
+              return item
+            end,
+          }, function(choice)
+            if choice == 'yes' then
+                vim.fn.jobstop(job_id);
+            else
+                return;
+            end
+          end)
+        end, { buffer = buf, silent = true })
       end
 
       t[k] = script;
@@ -126,7 +153,8 @@ local load_entry = function(bufnr)
   entry.runner = entry.runner or 'npm';
   entry.scripts = get_scripts(bufnr);
 
-  vim.keymap.set('n', '<leader>e', function()
+  -- executes a npm script
+  vim.keymap.set('n', '<leader>r', function()
     local cords = vim.api.nvim_win_get_cursor(0);
     local row = unpack(cords);
 
@@ -173,7 +201,11 @@ local init_autocmd = function()
   });
 end
 
-M.setup = function(_)
+M.setup = function(opts)
+  opts = opts or {};
+
+  config.output_layout = opts.output_layout or config.output_layout;
+
   init_autocmd();
   init_ui();
 end
