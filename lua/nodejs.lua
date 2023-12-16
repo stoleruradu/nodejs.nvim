@@ -1,4 +1,4 @@
-local scripts = require('nodejstools.pkg.scripts');
+local scripts = require('nodejs.package');
 
 local M = {};
 

@@ -28,6 +28,75 @@ local buf_json_decode = function(bufnr)
   return {};
 end
 
+local function get_deps(bufnr, cwd)
+  local query = vim.treesitter.query.parse('json', [[
+    (object
+      (pair
+        (string
+          (string_content) @key (#eq? @key "dependencies")
+        )
+        (object
+          (pair
+            key: (string) @dep.name
+            value: (string) @dep.version
+          ) @deps.pair
+        ) @deps.object
+      )
+    )
+  ]]);
+
+  local parser = vim.treesitter.get_parser(bufnr, 'json');
+  local tree = unpack(parser:parse());
+
+  local deps = setmetatable({}, {
+    __index = function(t, k)
+      local dep = {
+        cwd = cwd,
+      };
+
+      function dep:find()
+        P(self);
+        if not self.location then
+          self.location = vim.fs.find({ 'node_modules/' .. self.name .. '/package.json' }, {
+            upward = true,
+            path = self.cwd,
+            stop = vim.loop.os_homedir(),
+          });
+        end
+
+        vim.cmd.e({ args = self.location });
+      end
+
+      t[k] = dep;
+
+      return t[k];
+    end
+  });
+
+  for id, node in query:iter_captures(tree:root(), bufnr, 0, -1) do
+    local name = query.captures[id] -- name of the capture in the query
+
+    if name == 'dep.name' then
+      local row = node:range() -- range of the capture
+      local lnum = row + 1;
+      local parent = node:parent();
+      local child = node:child(1);
+
+      deps[parent:id()].name = vim.treesitter.get_node_text(child, bufnr);
+      deps[parent:id()].lnum = lnum;
+    end
+
+    if name == 'dep.version' then
+      local parent = node:parent();
+      local child = node:child(1);
+
+      deps[parent:id()].version = vim.treesitter.get_node_text(child, bufnr);
+    end
+  end
+
+  return deps;
+end
+
 local get_scripts = function(bufnr)
   local query = vim.treesitter.query.parse('json', [[
     (object
@@ -46,7 +115,7 @@ local get_scripts = function(bufnr)
   ]]);
 
   local parser = vim.treesitter.get_parser(bufnr, 'json');
-  local tree = parser:parse()[1];
+  local tree = unpack(parser:parse());
   local scripts = setmetatable({}, {
     __index = function(t, k)
       local script = {};
@@ -62,7 +131,8 @@ local get_scripts = function(bufnr)
         vim.api.nvim_win_set_buf(win, buf);
 
         local running = true;
-        local job_id = vim.fn.termopen({ 'yarn', self.key }, {
+        -- TODO: add auto detection
+        local job_id = vim.fn.termopen({ 'yarn', self.cmd }, {
           cwd = cwd,
           --on_stderr = send_output,
           on_exit = function()
@@ -86,9 +156,7 @@ local get_scripts = function(bufnr)
             end,
           }, function(choice)
             if choice == 'yes' then
-                vim.fn.jobstop(job_id);
-            else
-                return;
+              vim.fn.jobstop(job_id);
             end
           end)
         end, { buffer = buf, silent = true })
@@ -122,6 +190,7 @@ local get_scripts = function(bufnr)
       local child = node:child(1);
 
       scripts[parent:id()].value = vim.treesitter.get_node_text(child, bufnr);
+      scripts[parent:id()].cmd = vim.fn.split(scripts[parent:id()].value);
     end
   end
 
@@ -152,6 +221,19 @@ local load_entry = function(bufnr)
 
   entry.runner = entry.runner or 'npm';
   entry.scripts = get_scripts(bufnr);
+  entry.dependencies = get_deps(bufnr, entry.cwd);
+
+  vim.keymap.set('n', 'gp', function()
+    local cords = vim.api.nvim_win_get_cursor(0);
+    local row = unpack(cords);
+
+    -- TODO: add devDependecies & peerDependencies
+    for _, dep in pairs(entry.dependencies) do
+      if dep.lnum == row then
+        dep:find();
+      end
+    end
+  end, { silent = true, buffer = entry.buf });
 
   -- executes a npm script
   vim.keymap.set('n', '<leader>r', function()
