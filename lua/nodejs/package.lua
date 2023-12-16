@@ -55,7 +55,6 @@ local function get_deps(bufnr, cwd)
       };
 
       function dep:find()
-        P(self);
         if not self.location then
           self.location = vim.fs.find({ 'node_modules/' .. self.name .. '/package.json' }, {
             upward = true,
